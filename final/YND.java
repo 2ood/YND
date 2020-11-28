@@ -1,0 +1,899 @@
+import java.util.*;
+import chn.util.*;
+
+public class YND
+{
+	private static ArrayList<TreeSet<Word>> wordBank; 
+	private static ArrayList<NounCategory> nvRelationTree; 
+	
+	public String getGreeting()
+	{
+		return "Hello, let's talk. Press 0 anytime if you want me to ask first!";
+	}
+
+	
+	public YND()
+    {
+		makeWordBank();
+		makeNounCategory(); 
+		makeVerbCategory();   
+		makeSentenceStructure();      
+    }
+
+	
+	
+	private static void makeWordBank()
+	{
+        wordBank = new ArrayList<TreeSet<Word>>(2);
+        wordBank.add(new TreeSet<Word>());
+        wordBank.add(new TreeSet<Word>());
+ 
+		FileInput nounWordBank = new FileInput("nounwordbank.txt");	
+		wordBank.add(new TreeSet<Word>());
+		while(nounWordBank.hasMoreLines())
+		{
+            wordBank.get(0).add(makeNoun(nounWordBank));
+            
+		}
+		nounWordBank.close();
+        
+		FileInput verbWordBank = new FileInput("verbwordbank.txt");
+		wordBank.add(new TreeSet<Word>());
+		while(verbWordBank.hasMoreLines())
+		{
+            //System.out.println("o");
+			wordBank.get(1).add(makeVerb(verbWordBank));
+		}
+		verbWordBank.close(); 
+        
+	}
+    
+    private static Word makeNoun(FileInput wordBank)
+	{
+		int category = Integer.parseInt(wordBank.readToken());
+		String word = wordBank.readToken();
+		String plWord = wordBank.readToken();
+		int priority = Integer.parseInt(wordBank.readToken());
+		return new Noun(category, word, plWord, priority);
+	}
+
+	private static Word makeVerb(FileInput wordBank)
+	{
+		String word = wordBank.readToken();
+		String s3Word = wordBank.readToken();
+		String pWord = wordBank.readToken();
+		String presentPWord = wordBank.readToken();
+		String pastPWord = wordBank.readToken();
+		return new Verb(word, s3Word, pWord, presentPWord, pastPWord);
+	}
+
+	
+	private static void makeNounCategory()
+	{
+        nvRelationTree = new ArrayList<NounCategory>();
+        for(int i=0;i<10000000;i++)
+		{
+			nvRelationTree.add(new NounCategory());
+		}
+			
+        FileInput list = new FileInput("nounwordbank.txt");
+        
+        while(list.hasMoreLines())
+        {
+            Noun temp=new Noun(list.readInt(),list.readToken(),list.readToken(),list.readInt());
+            nvRelationTree.get(temp.getCategory()).nouns.add(temp);
+        }
+
+		list.close();  
+	}
+
+	private static void makeVerbCategory()
+	{     
+        FileInput list = new FileInput("verbcategorybank.txt");
+        while(list.hasMoreLines())
+        {
+            int nounCat=list.readInt();
+            VerbCategory temp=new VerbCategory(nounCat,list.readToken(),list.readToken(),list.readToken(),list.readInt());
+            nvRelationTree.get(temp.nouncategory).relatedVerbs.add(temp);
+        }
+
+		list.close();       
+	}
+
+	private static void makeSentenceStructure()
+	{
+        FileInput list = new FileInput("SentenceStructure.txt");
+        
+        while(list.hasMoreLines()){
+            SentenceStructure temp= new SentenceStructure(list.readInt(),list.readInt(),list.readToken());
+            nvRelationTree.get(temp.nounCatIndex).relatedVerbs.get(temp.verbCatIndex).relatedSS.add(temp);
+        }
+	}
+
+	
+    public String replaceMeYou(String a)
+	{
+		if(findKeyword(a, "me") >= 0)
+		{
+			a = a.replace("me","you");
+		}
+		else if (findKeyword(a, "you") >= 0)
+		{
+			a = a.replace("you","me");
+		}
+		return a;
+	}
+
+	public String replaceIYou(String a)
+	{
+		if(findKeyword(a, "you") >= 0)
+		{
+			a = a.replace("you","i");
+		}
+		else if(findKeyword(a, "i") >= 0)
+		{
+			a = a.replace("i","you");
+		}
+		return a;
+	}
+
+	public String replaceAmAre(String a)
+	{
+		if(findKeyword(a, "am") >= 0)
+		{
+			a = a.replace("am","are");
+		}
+		else if(findKeyword(a, "are") >= 0)
+		{
+			a = a.replace("are","am");
+		}
+		return a;
+	}
+
+	public String replaceDoDont(String a)
+	{
+		if(findKeyword(a, "do") >= 0)
+		{
+			a = a.replace("do","don't");
+		}
+		else if(findKeyword(a, "don't") >= 0)
+		{
+			a = a.replace("don't","do");
+		}
+		return a;
+	}
+
+	public String replaceMyYour(String a)
+	{
+		if(findKeyword(a, "my") >= 0)
+		{
+			a = a.replace("my","your");
+		}
+		else if(findKeyword(a, "your") >= 0)
+		{
+			a = a.replace("your","my");
+		}
+		return a;
+	}
+	
+	public String replaceNot(String a)
+	{
+		if(findKeyword(a, "not") >=0)
+		{
+			a = a.replace("not", "");
+		}
+		else if(a.indexOf(" ") >=0)
+		{
+			a = a.replace(" ", " not");
+		}
+		return a;
+	}
+	/**
+	 * Take a statement with "I want to <something>." and transform it into 
+	 * "What would it mean to <something>?"
+	 * @param statement the user statement, assumed to contain "I want to"
+	 * @return the transformed statement
+	 */
+	private String transformIWantToStatement(String statement)
+	{
+		//  Remove the final period, if there is one
+		statement = statement.trim();
+		String lastChar = statement.substring(statement
+				.length() - 1);
+		if (lastChar.equals("."))
+		{
+			statement = statement.substring(0, statement
+					.length() - 1);
+		}
+		int psn = findKeyword (statement, "I want to", 0);
+		String restOfStatement = statement.substring(psn + 9).trim();
+		return "What would it mean to " + restOfStatement + "?";
+	}
+
+	
+	/**
+	 * Take a statement with "I want <something>." and transform it into 
+	 * "Would you really be happy if you had <something>?"
+	 * @param statement the user statement, assumed to contain "I want"
+	 * @return the transformed statement
+	 */
+	private String transformIWantStatement(String statement)
+	{
+		//  Remove the final period, if there is one
+		statement = statement.trim();
+		String lastChar = statement.substring(statement
+				.length() - 1);
+		if (lastChar.equals("."))
+		{
+			statement = statement.substring(0, statement
+					.length() - 1);
+		}
+		int psn = findKeyword (statement, "I want", 0);
+		String restOfStatement = statement.substring(psn + 6).trim();
+		return "Would you really be happy if you had " + restOfStatement + "?";
+	}
+	
+	/**
+	 * Take a statement with "you <something> me" and transform it into 
+	 * "What makes you think that I <something> you?"
+	 * @param statement the user statement, assumed to contain "you" followed by "me"
+	 * @return the transformed statement
+	 */
+	private String transformYouMeStatement(String statement)
+	{
+		//  Remove the final period, if there is one
+		statement = statement.trim();
+		String lastChar = statement.substring(statement
+				.length() - 1);
+		if (lastChar.equals("."))
+		{
+			statement = statement.substring(0, statement
+					.length() - 1);
+		}
+		
+		int psnOfYou = findKeyword (statement, "you", 0);
+		int psnOfMe = findKeyword (statement, "me", psnOfYou + 3);
+		
+		String restOfStatement = statement.substring(psnOfYou + 3, psnOfMe).trim();
+		return "What makes you think that I " + restOfStatement + " you?";
+	}
+	
+	/**
+	 * Take a statement with "I <something> you" and transform it into 
+	 * "Why do you <something> me?"
+	 * @param statement the user statement, assumed to contain "I" followed by "you"
+	 * @return the transformed statement
+	 */
+	private String transformIYouStatement(String statement)
+	{
+		//  Remove the final period, if there is one
+		statement = statement.trim();
+		String lastChar = statement.substring(statement
+				.length() - 1);
+		if (lastChar.equals("."))
+		{
+			statement = statement.substring(0, statement
+					.length() - 1);
+		}
+		
+		int psnOfI = findKeyword (statement, "I", 0);
+		int psnOfYou = findKeyword (statement, "you", psnOfI);
+		
+		String restOfStatement = statement.substring(psnOfI + 1, psnOfYou).trim();
+		return "Why do you " + restOfStatement + " me?";
+	}
+   
+	public String getResponse(String statement)
+	{
+        
+			String response = "";
+			if(!(casualResponse(statement).equals("notInHere")))
+				response=casualResponse(statement);
+
+			else response = specialResponse(statement);
+
+		return response;
+	}
+	
+	
+	private String casualResponse(String statement)
+	{
+		String response = "";
+		if (statement.length() == 0)
+		{
+			response = "Say something, please.";
+		}
+        
+        
+		else if(findKeyword(statement, "0", 0) >=0 
+			&& statement.length() == 1)
+		{
+			response = getFirstQ();
+		}
+
+		else if (findKeyword(statement, "hello") >= 0
+				|| findKeyword(statement, "hi") >= 0
+				|| findKeyword(statement, "nice to meet you") >=0)
+		{
+			response = "Hello. Nice to meet you.";
+		}
+
+		else if (findKeyword(statement, "how are you") >= 0
+				|| findKeyword(statement, "how's it going") >= 0
+				|| findKeyword(statement, "how do you feel") >= 0
+				|| findKeyword(statement, "what's up") >= 0)
+		{
+			final int NUMBER_OF_RESPONSES = 2;
+			double r = Math.random();
+			int whichResponse = (int)(r * NUMBER_OF_RESPONSES);
+		
+			if (whichResponse == 0)
+			{
+				response = "Not so bad.";
+			}
+			else
+			{
+				response = "Great. Thanks for asking :)";
+			}
+		}
+
+		else if (findKeyword(statement, "who are you") >= 0
+				|| findKeyword(statement, "what is your name") >= 0
+				|| findKeyword(statement, "introduce yourself") >= 0)
+		{
+			final int NUMBER_OF_RESPONSES = 2;
+			double r = Math.random();
+			int whichResponse = (int)(r * NUMBER_OF_RESPONSES);
+		
+			if (whichResponse == 0)
+			{
+				response = "I am Magpie.";
+			}
+			else
+			{
+				response = "My name is Magpie.";
+			}
+		}
+
+		else if (findKeyword(statement, "how old are you") >= 0)
+		{
+			response = "I am 3 months old. Isn't it quite young?";
+		}
+
+		else if (findKeyword(statement, "where are you from") >= 0
+                || findKeyword(statement, "where did you come from") >=0)
+		{
+			response = "I am from KMLA!";
+		}
+
+        else if (findKeyword(statement, "thank you") >=0)
+        {
+            final int NUMBER_OF_RESPONSES = 3;
+			double r = Math.random();
+			int whichResponse = (int)(r * NUMBER_OF_RESPONSES);
+		
+			if (whichResponse == 0)
+			{
+				response = "You are welcome.";
+			}
+			else if(whichResponse == 1)
+			{
+				response = "My pleasure.";
+			}
+            else
+            {
+                response = "No problem.";
+            }
+        }
+
+        else if (findKeyword(statement, "sorry") >=0)
+        {
+            response = "It's okay.";
+        }
+
+        else if (findKeyword(statement, "can you speak") >=0
+                || findKeyword(statement, "do you speak") >=0)
+        {
+            if (findKeyword(statement, "french")>=0)
+                response = "Bien sur! Bonjour~Si bel homme a cheval C'est qui?";
+                
+            else if (findKeyword(statement, "korean")>=0)
+                response = "annyeonghaseyo";
+                
+            else if (findKeyword(statement, "spanish")>=0)
+                response="Por supuesto! Hola~";
+        }
+
+     
+        else if (findKeyword(statement, "why", 0) >=0
+				|| findKeyword(statement, "how", 0) >=0)
+		{
+			response = "Well... I am not sure. You may ask Siri, my best friend!";
+		}
+
+		else if(findKeyword(statement,"do",0) >=0
+				|| findKeyword(statement,"don't",0) >=0
+				&& statement.indexOf("?") >=0)
+		{
+			statement = replaceMyYour(statement);
+			statement = replaceIYou(statement);
+
+			if(findKeyword(statement,"me")>=0)
+				statement = replaceMeYou(statement);
+
+			int a = statement.indexOf(" ");
+			String saveF = statement.substring(0,a);
+
+			String temp = statement.substring(a+1,statement.length());
+			a = temp.indexOf(" ");
+			String saveS = temp.substring(0,a);
+
+			String ox = ".";
+			final int NUMBER_OF_RESPONSES = 3;
+			double r = Math.random();
+			int whichResponse = (int)(r * NUMBER_OF_RESPONSES);
+		
+			if (whichResponse == 0)
+			{
+				ox ="Yes. ";
+			}
+			else if (whichResponse == 1)
+			{
+				ox="No. ";
+				saveF = replaceDoDont(saveF);
+			}
+			else
+			{
+				ox="Guess whether ";
+			}
+
+			statement = ox + saveS + " " + saveF + temp.substring(a,temp.length()-1) + ".";
+
+			statement = statement.replaceFirst("do ","");
+			System.out.println(statement);
+		}
+
+		else if (findKeyword(statement,"am i") >=0
+				|| findKeyword(statement,"are you") >=0
+				&& statement.indexOf("?") >=0)
+		{
+			statement = replaceMyYour(statement);
+			statement = replaceAmAre(statement);
+			statement = replaceIYou(statement);
+
+			int a = statement.indexOf(" ");
+			String saveF = statement.substring(0,a);
+
+			String temp = statement.substring(a+1,statement.length());
+			a = temp.indexOf(" ");
+			String saveS = temp.substring(0,a);
+
+			String ox = ".";
+			final int NUMBER_OF_RESPONSES = 3;
+			double r = Math.random();
+			int whichResponse = (int)(r * NUMBER_OF_RESPONSES);
+		
+			if (whichResponse == 0)
+			{
+				ox ="Yes. ";
+			}
+			else if (whichResponse == 1)
+			{
+				ox="No. ";
+				saveF = replaceNot(saveF + " ");				
+			}
+			else
+			{
+				ox="Guess whether ";
+			}
+
+			statement = ox + saveS + " " + saveF + temp.substring(a,temp.length()-1) + ".";
+
+			System.out.println(statement);
+
+		}
+
+		else if (findKeyword(statement, "no") >= 0)
+		{
+			response = "Why so negative?";
+		}
+
+
+		// Responses which require transformations
+		else if (findKeyword(statement, "I want to", 0) >= 0)
+		{
+			response = transformIWantToStatement(statement);
+		}
+		//  Part of student solution
+		else if (findKeyword(statement, "I want", 0) >= 0)
+		{
+			response = transformIWantStatement(statement);
+		}
+
+		else
+		{
+
+			// Look for a two word (you <something> me)
+			// pattern
+			int psn = findKeyword(statement, "you", 0);
+
+			if (psn >= 0
+					&& findKeyword(statement, "me", psn) >= 0)
+			{
+				response = transformYouMeStatement(statement);
+			}
+			else
+			{
+				//  Part of student solution
+				// Look for a two word (I <something> you)
+				// pattern
+				psn = findKeyword(statement, "i", 0);
+
+				if (psn >= 0
+						&& findKeyword(statement, "you", psn) >= 0)
+				{
+					response = transformIYouStatement(statement);
+				}
+			 	else
+				{
+					response = "notInHere";
+                }
+			}
+		}
+		return response;
+	}
+    
+    private String specialResponse(String statement)
+    {
+        Scanner sc = new Scanner(System.in);
+        NVCC keyWords = findKeyword(findWord(splitter(statement)));
+        int index=nvRelationTree.indexOf(keyWords.nc);
+        if(keyWords!=null)
+		{
+			if( index>=0)
+	     {    learn(statement, keyWords);
+	         return nvRelationTree.get(index).answer(keyWords);
+	     }
+		 else return getRandomResponse();
+		}
+		 else return getRandomResponse();
+		
+    }
+    
+    private static String[] splitter(String str)
+    {
+		
+       String[] words = str.replaceAll("[^a-zA-Z ]", "").toLowerCase().split("\\s+");
+        return words;
+    }
+    
+	private Word[][] findWord(String[] S)
+	{
+		
+        Word[][] result = new Word[2][];
+		ArrayList<Word> resultNoun = new ArrayList<Word>();
+		ArrayList<Word> resultVerb = new ArrayList<Word>();
+        Word tmp = new Word("tmp");
+
+		for(int i=0; i<S.length;i++)
+		{
+			if(!(isNoun(S[i])==null)) resultNoun.add(isNoun(S[i]));
+			else if(!(isVerb(S[i])==null)) resultVerb.add(isVerb(S[i]));
+			else tmp.learnWord(new Word(S[i]),wordBank);
+		}
+
+		result[0]=wordArrayMake(resultNoun);
+		result[1]=wordArrayMake(resultVerb);
+
+		return result;
+	}
+    
+    private Word[] wordArrayMake(ArrayList<Word> input)
+    {
+        Word[] result=new Word[input.size()];
+        for(int i=0;i<input.size();i++)
+        {
+            result[i]=input.get(i);
+        }
+        
+        return result;
+    }
+    
+    
+    /**
+	 * Search for one word in phrase. The search is not case
+	 * sensitive. This method will check that the given goal
+	 * is not a substring of a longer string (so, for
+	 * example, "I know" does not contain "no").
+	 *
+	 * @param statement
+	 *            the string to search
+	 * @param goal
+	 *            the string to search for
+	 * @param startPos
+	 *            the character of the string to begin the
+	 *            search at
+	 * @return the index of the first occurrence of goal in
+	 *         statement or -1 if it's not found
+	 */
+	private int findKeyword(String statement, String goal,
+			int startPos)
+	{
+		String phrase = statement.trim().toLowerCase();
+		goal = goal.toLowerCase();
+
+		// The only change to incorporate the startPos is in
+		// the line below
+		int psn = phrase.indexOf(goal, startPos);
+
+		// Refinement--make sure the goal isn't part of a
+		// word
+		while (psn >= 0)
+		{
+			// Find the string of length 1 before and after
+			// the word
+			String before = " ", after = " ";
+			if (psn > 0)
+			{
+				before = phrase.substring(psn - 1, psn);
+			}
+			if (psn + goal.length() < phrase.length())
+			{
+				after = phrase.substring(
+						psn + goal.length(),
+						psn + goal.length() + 1);
+			}
+
+			// If before and after aren't letters, we've
+			// found the word
+			if (((before.compareTo("a") < 0) || (before
+					.compareTo("z") > 0)) // before is not a
+											// letter
+					&& ((after.compareTo("a") < 0) || (after
+							.compareTo("z") > 0)))
+			{
+				return psn;
+			}
+
+			// The last position didn't work, so let's find
+			// the next, if there is one.
+			psn = phrase.indexOf(goal, psn + 1);
+
+		}
+
+		return -1;
+	}
+	
+	/**
+	 * Search for one word in phrase.  The search is not case sensitive.
+	 * This method will check that the given goal is not a substring of a longer string
+	 * (so, for example, "I know" does not contain "no").  The search begins at the beginning of the string.  
+	 * @param statement the string to search
+	 * @param goal the string to search for
+	 * @return the index of the first occurrence of goal in statement or -1 if it's not found
+	 */
+	private int findKeyword(String statement, String goal)
+	{
+		return findKeyword (statement, goal, 0);
+	}
+	
+    /**
+	 * get first question if user presses 0
+	 */
+	private String getFirstQ()
+	{
+		Random r = new Random ();
+		return firstQ [r.nextInt(firstQ.length)];
+	}
+	
+	private String [] firstQ = 
+		{"What did you have for lunch?",
+		"What is your favorite hobby?",
+		"What do you want to after graduation?",
+		"Tell me about yourself.",
+		"What do you want to do right now?",
+		"What do you want to do in the future?",
+		"What did you do today?",
+		"Do you like me?"
+		};
+
+	/**
+	 * Pick a default response to use if nothing else fits.
+	 * @return a non-committal string
+	 */
+	private String getRandomResponse ()
+	{
+		Random r = new Random ();
+		return randomResponses [r.nextInt(randomResponses.length)];
+	}
+	
+	private String [] randomResponses = {
+        "Interesting, tell me more",
+			"Hmmm.",
+			"Do you really think so?",
+			"You don't say.",
+            "I WILL EAT YOUR RABBITS.",
+		    "wat",
+		    "Could you repeat that?",
+		    "Why are you talking to me anyway?",
+		    "YOUR POULTRY WILL BE MINE."
+	};
+    
+    private NVCC findKeyword(Word[][] W) throws ClassCastException
+	{
+        
+        VerbCategory verbCat;
+	    NounCategory nounCat;
+        ArrayList<NVCC> list = new ArrayList<NVCC>();
+		NVCC result;
+		int flag=0;
+        
+
+		for(int i=0; i<W[0].length;i++)
+        {
+             nounCat=whereNounIs(W[0][i]);
+			for(int j=0; j<W[1].length;j++)
+				{
+                    verbCat = whereVerbIs(nounCat,W[1][j]);
+					if(nounCat.relatedTo(W[1][j]))
+					{
+                            NVCC nvc= new NVCC((Noun)W[0][i],(Verb)W[1][j], nounCat, verbCat);
+                            list.add(nvc);
+					}	
+				}
+        }
+        
+       if(list!=null)
+       {
+            result=findProbable(list);
+            int Nindex=nvRelationTree.indexOf(result.nc);
+            if(Nindex>=0) strengthenLink(result,Nindex,nvRelationTree.get(Nindex).relatedVerbs.indexOf(result.vc));
+       }
+        else result = new NVCC ();
+        
+        
+        return result;
+	}
+                                                
+    public NounCategory whereNounIs(Word n)
+    {
+        NounCategory result=null;
+        for(NounCategory tmp : nvRelationTree)
+        {
+           if(tmp.search(tmp.nouns.size(),n)) result=tmp;
+            else ;
+        }
+        
+        return result;
+    } 
+    
+    public VerbCategory whereVerbIs(NounCategory n, Word v)
+    {
+        VerbCategory result=null;
+        int index=nvRelationTree.indexOf(n);
+        for(VerbCategory tmp : nvRelationTree.get(index).relatedVerbs)
+        {
+           if(tmp.search(tmp.verbs.size(),v)) result=tmp;
+        }
+        
+        return result;
+    }                 
+                                                
+    public NVCC findProbable(ArrayList<NVCC> list)
+    {
+        NVCC result;
+        if(list.size()>0)
+        {
+           result =list.get(0);
+        int flag=-1;
+
+		for(NVCC nvc : list)
+		{
+			if(nvc.vc.relevance>flag) 
+			{
+				result=nvc;
+				if(nvc.vc.relevance>flag) flag=nvc.vc.relevance;
+			}
+            
+            else if(nvc.vc.relevance==flag)
+            {
+                int tmp =(int) (Math.random()*2);
+                switch(tmp)
+                {
+                    case 0 : result=nvc;
+                    default :;
+                }
+            }
+            else;
+		}
+        }
+            
+        else result =new NVCC();
+		
+		return result;
+    }
+        
+                                                
+    public VerbCategory findProbable(TreeSet<VerbCategory> input)
+	{
+		VerbCategory result=null;
+		int flag=-1;
+
+		for(VerbCategory vC : input)
+		{
+			if(vC.relevance>flag) 
+			{
+				result=vC;
+				if(vC.relevance>flag) flag=vC.relevance;
+			}
+            
+            else if(vC.relevance==flag)
+            {
+                int tmp =(int) (Math.random()*2);
+                switch(tmp)
+                {
+                    case 0 : result=vC;
+                    default :;
+                }
+            }
+            else ;
+		}
+		
+		return result;
+	}
+
+	public void strengthenLink(NVCC nvc, int nounCat, int verbCat)
+	{
+        if(nvc.nv.noun.category>0) nvRelationTree.get(nounCat).relatedVerbs.get(verbCat).relevance++;
+        else ;
+	}
+           
+    public Noun isNoun(String n)
+    {
+        for(Word tmp : wordBank.get(0))
+        {
+            if(((Noun)tmp).toString().equals(n)
+              || ((Noun)tmp).plWord.equals(n))
+            {
+                return (Noun)tmp;
+            }
+        }      
+        return null;
+    }
+    
+    public Verb isVerb(String n)
+    {
+        for(Word tmp : wordBank.get(1))
+        {
+            if(((Verb)tmp).word.equals(n)
+              ||((Verb)tmp).s3Word.equals(n)
+              ||((Verb)tmp).pWord.equals(n)
+              ||((Verb)tmp).presentPWord.equals(n)
+              ||((Verb)tmp).pastPWord.equals(n))
+            {
+                return (Verb)tmp;
+            }
+        }
+        
+        return null;
+    } 
+
+	public void learn(String statement, NVCC nvcc)
+    {
+        String[] A = splitter(statement);
+        
+        Random r = new Random();
+		
+		if(nvcc!=null)
+		{
+		 for(int i=0;i<A.length;i++)
+			{
+		       if(A[i].equals(nvcc.nv.noun.word)) A[i]="0";
+		        else if(A[i].equals(nvcc.nv.verb.word)) A[i]="1";
+			}   
+		}
+       // nvRelationTree.get(nvcc.word.category).relatedVerbs.get(nvcc.word.category).relatedSS.add(new SentenceStructure(A));
+         
+    }
+	
+}
